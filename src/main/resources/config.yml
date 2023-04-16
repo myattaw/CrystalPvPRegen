@@ -1,0 +1,21 @@
+settings:
+  zone-id: 'America/Los_Angeles'
+  warning-enabled: true
+  warning-timer: 20
+
+regions:
+  1:
+    time: "22:50"
+    world: "world"
+    pos1:
+      x: 223
+      y: -64
+      z: -178
+    pos2:
+      x: 268
+      y: 100
+      z: -222
+
+broadcast-messages:
+  warning: "&c&lLIFESTEAL &8&l▶ &7The Crystal %name% area will begin regenerating in 20 seconds."
+  complete: "&c&lLIFESTEAL &8&l▶ &7The Crystal %name% area has finished regenerating."
