@@ -34,6 +34,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.time.ZoneId;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -48,44 +49,17 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
 
     private Map<String, CrystalRegion> regionMap = new HashMap<>();
 
-    private ZoneId ZONE_ID;
 
     private WorldEdit worldEdit = WorldEdit.getInstance();
 
-    private Set<BaseBlock> replaceBlocks;
 
     @Override
     protected void enable() {
         saveDefaultConfig();
 
-        this.replaceBlocks = ImmutableSet.of(
-                BlockTypes.WATER.getDefaultState().toBaseBlock(),
-                BlockTypes.SEAGRASS.getDefaultState().toBaseBlock(),
-                BlockTypes.TALL_SEAGRASS.getDefaultState().toBaseBlock(),
-                BlockTypes.KELP_PLANT.getDefaultState().toBaseBlock(),
-                BlockTypes.KELP.getDefaultState().toBaseBlock()
-        );
 
-        this.ZONE_ID = ZoneId.of(getConfig().getString("settings.zone-id"));
         int timer = getConfig().getInt("settings.warning-timer");
         boolean enableWarning = getConfig().getBoolean("settings.warning-enabled");
-
-        String path = "regions.%s.";
-        for (String str : getConfig().getConfigurationSection("regions").getKeys(false)) {
-            String time = getConfig().getString(String.format(path, str) + "time");
-            CrystalRegion crystalRegion = CrystalRegion.create(
-                    str,
-                    getConfig().getString(String.format(path, str) + "world"),
-                    getConfig().getInt(String.format(path, str) + "pos1.x"),
-                    getConfig().getInt(String.format(path, str) + "pos1.y"),
-                    getConfig().getInt(String.format(path, str) + "pos1.z"),
-                    getConfig().getInt(String.format(path, str) + "pos2.x"),
-                    getConfig().getInt(String.format(path, str) + "pos2.y"),
-                    getConfig().getInt(String.format(path, str) + "pos2.z")
-            );
-            regionMap.put(time, crystalRegion);
-        }
-
 
         ImmutableSet<File> crystalZones = ImmutableSet.of(
                 new File(getDataFolder().getAbsolutePath() + "/north.schem"),
@@ -94,20 +68,26 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
                 new File(getDataFolder().getAbsolutePath() + "/east.schem")
         );
 
+        org.bukkit.@Nullable World world = Bukkit.getWorld(getConfig().getString("paste-location.world"));
+        if (world == null) {
+            world = Bukkit.createWorld(new WorldCreator(getConfig().getString("paste-location.world")));
+        }
+
+        List<String> broadcast = getConfig().getStringList("settings.broadcast");
+        BlockVector3 vector3 = BlockVector3.at(
+                getConfig().getInt("paste-location.x"),
+                getConfig().getInt("paste-location.y"),
+                getConfig().getInt("paste-location.z")
+        );
+
+        org.bukkit.@Nullable World finalWorld = world;
         Schedulers.async().runRepeating(() -> {
 
             if (enableWarning) {
-                Bukkit.broadcastMessage("");
-                Bukkit.broadcastMessage(Text.colorize("&7&lCrystalZone is being regenerated outside &9&l/spawn&7!"));
-                Bukkit.broadcastMessage("");
+                broadcast.stream().map(Text::colorize).forEach(Bukkit::broadcastMessage);
             }
 
-            org.bukkit.@Nullable World world = Bukkit.getWorld("spawn");
-            if (world == null) {
-                world = Bukkit.createWorld(new WorldCreator("spawn"));
-            }
-
-            World bukkitWorld = BukkitAdapter.adapt(world);
+            World bukkitWorld = BukkitAdapter.adapt(finalWorld);
             for (File file : crystalZones) {
                 EditSession editSession = WorldEdit.getInstance().getEditSessionFactory().getEditSession(bukkitWorld, -1);
 
@@ -130,7 +110,7 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
                 // Saves our operation and builds the paste - ready to be completed.
                 Operation operation = new ClipboardHolder(clipboard)
                         .createPaste(editSession)
-                        .to(BlockVector3.at(-24, 85, -8))
+                        .to(vector3)
                         .ignoreAirBlocks(true)
                         .build();
 
@@ -154,8 +134,6 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
                     }
                 }
             });
-
-
         }, 1L, TimeUnit.MINUTES, 1L, TimeUnit.MINUTES).bindWith(this);
 
     }
