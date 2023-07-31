@@ -16,8 +16,6 @@ import com.sk89q.worldedit.function.operation.Operations;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.session.ClipboardHolder;
 import com.sk89q.worldedit.world.World;
-import com.sk89q.worldedit.world.block.BaseBlock;
-import com.sk89q.worldedit.world.block.BlockTypes;
 import me.lucko.helper.Schedulers;
 import me.lucko.helper.plugin.ExtendedJavaPlugin;
 import me.lucko.helper.plugin.ap.Plugin;
@@ -32,12 +30,12 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.time.ZoneId;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 @Plugin(
         name = "CrystalPvPRegen",
@@ -83,58 +81,64 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
         org.bukkit.@Nullable World finalWorld = world;
         Schedulers.async().runRepeating(() -> {
 
-            if (enableWarning) {
-                broadcast.stream().map(Text::colorize).forEach(Bukkit::broadcastMessage);
-            }
+                    if (enableWarning) {
+                        broadcast.stream().map(Text::colorize).forEach(Bukkit::broadcastMessage);
+                    }
 
-            World bukkitWorld = BukkitAdapter.adapt(finalWorld);
-            for (File file : crystalZones) {
-                EditSession editSession = WorldEdit.getInstance().getEditSessionFactory().getEditSession(bukkitWorld, -1);
+                    World bukkitWorld = BukkitAdapter.adapt(finalWorld);
+                    for (File file : crystalZones) {
+                        if (!file.exists()) {
+                            getLogger().log(Level.SEVERE, "Could not find file " + file.getAbsolutePath());
+                        }
 
-                ClipboardFormat format = ClipboardFormats.findByFile(file);
-                ClipboardReader reader;
-                try {
-                    reader = format.getReader(new FileInputStream(file));
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                        EditSession editSession = WorldEdit.getInstance().newEditSession(bukkitWorld);
+                        editSession.setFastMode(false);
+                        ClipboardFormat format = ClipboardFormats.findByFile(file);
+                        ClipboardReader reader;
+                        try {
+                            reader = format.getReader(Files.newInputStream(file.toPath()));
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
 
-                Clipboard clipboard;
-                try {
-                    clipboard = reader.read();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-                //-23 85 -7
+                        Clipboard clipboard;
+                        try {
+                            clipboard = reader.read();
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        //-23 85 -7
 
-                // Saves our operation and builds the paste - ready to be completed.
-                Operation operation = new ClipboardHolder(clipboard)
-                        .createPaste(editSession)
-                        .to(vector3)
-                        .ignoreAirBlocks(true)
-                        .build();
+                        // Saves our operation and builds the paste - ready to be completed.
+                        Operation operation = new ClipboardHolder(clipboard)
+                                .createPaste(editSession)
+                                .to(vector3)
+//                                .ignoreAirBlocks(true)
+                                .build();
 
-                try {
-                    // This simply completes our paste and then cleans up.
-                    Operations.complete(operation);
-                    editSession.flushSession();
-                } catch (WorldEditException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            Players.all().forEach(player -> {
-                FLocation fLocation = new FLocation(player.getLocation());
-                if (Board.getInstance().getFactionAt(fLocation).getId().equals("-3") && !player.getLocation().getBlock().getType().isAir()) {
-                    for (int y = 64; y < 150; y++) {
-                        Block block = player.getWorld().getBlockAt(player.getLocation().getBlockX(), y, player.getLocation().getBlockZ());
-                        if (block.getType().isAir() && block.getRelative(BlockFace.UP).getType().isAir() && block.getRelative(BlockFace.DOWN).isSolid()) {
-                            Schedulers.sync().run(() -> player.teleport(block.getLocation()));
+                        try {
+                            // This simply completes our paste and then cleans up.
+                            Operations.complete(operation);
+                            editSession.close();
+                        } catch (WorldEditException e) {
+                            e.printStackTrace();
                         }
                     }
-                }
-            });
-        }, 1L, TimeUnit.MINUTES, 1L, TimeUnit.MINUTES).bindWith(this);
+
+                    Players.all().forEach(player -> {
+                        FLocation fLocation = new FLocation(player.getLocation());
+                        // If player is in crystal zone faction then teleport them to surface
+                        if (Board.getInstance().getFactionAt(fLocation).getId().equals("-3") && !player.getLocation().getBlock().getType().isAir()) {
+                            for (int y = 64; y < 150; y++) {
+                                Block block = player.getWorld().getBlockAt(player.getLocation().getBlockX(), y, player.getLocation().getBlockZ());
+                                if (block.getType().isAir() && block.getRelative(BlockFace.UP).getType().isAir() && block.getRelative(BlockFace.DOWN).isSolid()) {
+                                    Schedulers.sync().run(() -> player.teleport(block.getLocation()));
+                                }
+                            }
+                        }
+                    });
+                }, 6, TimeUnit.HOURS, 6, TimeUnit.HOURS)
+                .bindWith(this);
 
     }
 }
