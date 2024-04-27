@@ -81,7 +81,7 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
         org.bukkit.@Nullable World finalWorld = world;
         Schedulers.async().runRepeating(() ->
                         fixWarzone(enableWarning, broadcast, finalWorld, crystalZones, vector3),
-                        6, TimeUnit.MINUTES, 30, TimeUnit.HOURS
+                        6, TimeUnit.MINUTES, 1, TimeUnit.HOURS
                 )
                 .bindWith(this);
 
