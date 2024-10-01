@@ -1,10 +1,17 @@
 settings:
   warning-enabled: true
   warning-timer: 20
+  reset-timer: 60
   broadcast:
     - ""
     - "&c&lFACTIONS &8&l▶ &7The &9CrystalZone &7has begun regenerating outside of &9/spawn&7."
     - ""
+
+schematics:
+  - "north"
+  - "south"
+  - "west"
+  - "east"
 
 paste-location:
   world: "spawn"

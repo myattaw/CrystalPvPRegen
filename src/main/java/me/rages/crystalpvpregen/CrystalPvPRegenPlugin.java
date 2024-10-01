@@ -31,6 +31,8 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +41,12 @@ import java.util.logging.Level;
 
 @Plugin(
         name = "CrystalPvPRegen",
-        hardDepends = {"helper", "FastAsyncWorldEdit", "Factions"},
+        hardDepends = {
+                "helper", "FastAsyncWorldEdit"
+        },
+        softDepends = {
+                "Factions"
+        },
         apiVersion = "1.18",
         authors = {"Rages"}
 )
@@ -49,6 +56,8 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
 
 
     private WorldEdit worldEdit = WorldEdit.getInstance();
+    private Instant nextRegen;
+    private RegenRegionPlaceholder regionPlaceholder;
 
 
     @Override
@@ -59,12 +68,14 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
         int timer = getConfig().getInt("settings.warning-timer");
         boolean enableWarning = getConfig().getBoolean("settings.warning-enabled");
 
-        ImmutableSet<File> crystalZones = ImmutableSet.of(
-                new File(getDataFolder().getAbsolutePath() + "/north.schem"),
-                new File(getDataFolder().getAbsolutePath() + "/south.schem"),
-                new File(getDataFolder().getAbsolutePath() + "/west.schem"),
-                new File(getDataFolder().getAbsolutePath() + "/east.schem")
-        );
+
+        // Get the list of schematics (strings like "north", "south", "west", "east")
+        List<String> schematics = getConfig().getStringList("schematics");
+
+        // Use a builder to create the ImmutableSet dynamically
+        ImmutableSet<File> crystalZones = schematics.stream()
+                .map(schem -> new File(getDataFolder(), "/" + schem + ".schem"))  // Map each string to a File object
+                .collect(ImmutableSet.toImmutableSet());
 
         org.bukkit.@Nullable World world = Bukkit.getWorld(getConfig().getString("paste-location.world"));
         if (world == null) {
@@ -79,17 +90,32 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
         );
 
         org.bukkit.@Nullable World finalWorld = world;
+
+        int resetTimer = getConfig().getInt("settings.reset-timer");
+        this.nextRegen = Instant.now().plus(resetTimer, ChronoUnit.MINUTES);
         Schedulers.async().runRepeating(() ->
                         fixWarzone(enableWarning, broadcast, finalWorld, crystalZones, vector3),
-                        6, TimeUnit.MINUTES, 1, TimeUnit.HOURS
+                        6, TimeUnit.MINUTES, resetTimer, TimeUnit.MINUTES
                 )
                 .bindWith(this);
 
         Commands.create()
                 .assertPermission("crystalregen.admin")
-                .handler(cmd -> {
-                    Schedulers.async().run(() -> fixWarzone(enableWarning, broadcast, finalWorld, crystalZones, vector3));
-                }).registerAndBind(this, "crystalregen");
+                .handler(cmd -> Schedulers.async().run(() ->
+                        fixWarzone(enableWarning, broadcast, finalWorld, crystalZones, vector3)))
+                .registerAndBind(this, "crystalregen");
+
+        if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            this.regionPlaceholder = new RegenRegionPlaceholder(this);
+            this.regionPlaceholder.register();
+        }
+    }
+
+    @Override
+    protected void disable() {
+        if (getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+            this.regionPlaceholder.unregister();
+        }
     }
 
     public void fixWarzone(
@@ -99,6 +125,8 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
             ImmutableSet<File> crystalZones,
             BlockVector3 vector3
     ) {
+        this.nextRegen = Instant.now().plus(getConfig().getInt("settings.reset-timer"), ChronoUnit.MINUTES);
+
         if (enableWarning) {
             broadcast.stream().map(Text::colorize).forEach(Bukkit::broadcastMessage);
         }
@@ -143,18 +171,23 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
             }
         }
 
-        Players.all().forEach(player -> {
-            FLocation fLocation = new FLocation(player.getLocation());
-            // If player is in crystal zone faction then teleport them to surface
-            if (Board.getInstance().getFactionAt(fLocation).getId().equals("-3") && !player.getLocation().getBlock().getType().isAir()) {
-                for (int y = 64; y < 150; y++) {
-                    Block block = player.getWorld().getBlockAt(player.getLocation().getBlockX(), y, player.getLocation().getBlockZ());
-                    if (block.getType().isAir() && block.getRelative(BlockFace.UP).getType().isAir() && block.getRelative(BlockFace.DOWN).isSolid()) {
-                        Schedulers.sync().run(() -> player.teleport(block.getLocation()));
+        if (Bukkit.getPluginManager().isPluginEnabled("Factions")) {
+            Players.all().forEach(player -> {
+                FLocation fLocation = new FLocation(player.getLocation());
+                // If player is in crystal zone faction then teleport them to surface
+                if (Board.getInstance().getFactionAt(fLocation).getId().equals("-3") && !player.getLocation().getBlock().getType().isAir()) {
+                    for (int y = 64; y < 150; y++) {
+                        Block block = player.getWorld().getBlockAt(player.getLocation().getBlockX(), y, player.getLocation().getBlockZ());
+                        if (block.getType().isAir() && block.getRelative(BlockFace.UP).getType().isAir() && block.getRelative(BlockFace.DOWN).isSolid()) {
+                            Schedulers.sync().run(() -> player.teleport(block.getLocation()));
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     }
 
+    public Instant getNextRegen() {
+        return nextRegen;
+    }
 }
