@@ -179,7 +179,10 @@ public class CrystalPvPRegenPlugin extends ExtendedJavaPlugin {
                     for (int y = 64; y < 150; y++) {
                         Block block = player.getWorld().getBlockAt(player.getLocation().getBlockX(), y, player.getLocation().getBlockZ());
                         if (block.getType().isAir() && block.getRelative(BlockFace.UP).getType().isAir() && block.getRelative(BlockFace.DOWN).isSolid()) {
-                            Schedulers.sync().run(() -> player.teleport(block.getLocation()));
+                            Schedulers.sync().run(() -> {
+                                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "combatlogx untag " + player.getName());
+                                player.teleport(block.getLocation());
+                            });
                         }
                     }
                 }
